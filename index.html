@@ -171,6 +171,15 @@
   .cmp-g{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(320px,100%),1fr));gap:18px;margin-top:14px}
   .cmp-g canvas{width:100%;height:auto;border-radius:12px;display:block;max-height:62vh;object-fit:contain}
   .cmp-g select{width:100%;margin-bottom:8px}
+  .prods{display:flex;flex-direction:column;gap:8px}
+  .prod{display:flex;align-items:center;gap:8px;padding:8px;border:1px solid var(--line2);border-radius:12px;background:#fff}
+  .prod img{width:44px;height:44px;object-fit:contain;border-radius:8px;background:repeating-conic-gradient(#eee 0 25%,#fff 0 50%) 0 0/10px 10px;flex:none}
+  .prod input{flex:1;min-width:0;font-size:13px;padding:6px 8px;border:1px solid var(--line);border-radius:8px}
+  .prod button{border:1px solid var(--line2);background:#fff;border-radius:999px;min-height:32px;padding:4px 10px;font-size:12px;font-weight:600;cursor:pointer}
+  .prod button[aria-pressed="true"]{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .rng{display:grid;grid-template-columns:110px 1fr 44px;align-items:center;gap:8px;font-size:13px;font-weight:600}
+  .rng input{accent-color:var(--acc);width:100%}
+  .rng output{font-size:12px;color:var(--ink2);text-align:right}
   footer{padding:0 24px 28px;font-size:12px;color:var(--ink2)}
   [hidden]{display:none !important}
 </style>
@@ -182,7 +191,7 @@
     <div><h1>Ads Infinitos</h1><p>Generador de anuncios con IA para Meta Ads</p></div>
   </div>
   <div class="topact">
-    <span class="count" style="font-weight:700">v10</span><span class="count" id="contador"></span>
+    <span class="count" id="contador"></span>
     <button class="btn sm" id="btnCsv" type="button">Exportar textos (CSV)</button>
     <button class="btn primary" id="btnGenTop" type="button">Generar anuncios</button>
   </div>
@@ -234,10 +243,11 @@
             <label class="f">Combo x2 ($)<input name="combo" inputmode="numeric" value="1090"></label>
             <label class="f">Usos por envase<input name="usos" inputmode="numeric" value="25"></label>
           </div>
-          <label class="f">Foto real del producto <span class="hint">opcional · ideal PNG sin fondo (aparece en el estilo Marcador)</span>
-            <span class="file"><input type="file" id="prodFile" accept="image/*"><img id="thumbProd" alt="" hidden style="background:repeating-conic-gradient(#eee 0 25%,#fff 0 50%) 0 0/12px 12px;object-fit:contain"></span>
-            <button class="btn sm" type="button" id="prodClear">Quitar producto</button>
-          </label>
+          <div class="f" style="gap:8px"><span>Productos <span class="hint">subí uno o varios (ideal: fondo blanco liso o PNG sin fondo). Cada anuncio puede usar otro.</span></span>
+            <div id="prodList" class="prods"></div>
+            <label class="btn sm upl" style="align-self:flex-start">+ Agregar producto<input type="file" id="prodFile" accept="image/*" multiple></label>
+          </div>
+          <div class="f" style="gap:8px"><span>Cómo aparece el producto en la foto</span><div class="opt" data-opt="prodModo"></div></div>
           <label class="f">Beneficios <span class="hint">separados por coma</span><input name="beneficios" value="Define cada rulo, Hidrata sin apelmazar, Controla el frizz"></label>
         </div>
       </details>
@@ -297,6 +307,7 @@
 
       <details class="sec"><summary>Ajustes avanzados</summary>
         <div class="fields">
+          <div class="f" style="gap:8px"><span>Modelo que integra el producto</span><div class="opt" data-opt="modeloInt"></div><span class="hint">Si uno da error de saldo o sale raro, probá otro. GPT Image suele integrar mejor pero puede pedir saldo pago.</span></div>
           <button class="btn sm" id="btnReset" type="button">Borrar todo y empezar de cero</button>
         </div>
       </details>
@@ -346,7 +357,6 @@
 
 
 
-<footer><b>Versión 10</b> · Obligatorio ITCD 2026 · Universidad ORT Uruguay · Artefacto 8: El Generador de "Ads" Infinitos. IA de texto e imagen: <a href="https://pollinations.ai">Pollinations.ai</a>. Las fotos muestran personas ficticias generadas por IA.</footer>
 <dialog class="cmp" id="cmp" aria-label="Comparar anuncios">
   <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap"><h3 style="margin:0;font-size:20px;font-weight:800">Comparar A/B</h3><button class="btn sm" type="button" id="cmpClose">Cerrar</button></div>
   <p class="hint" style="margin:6px 0 0">Elegí dos anuncios para verlos lado a lado, como los va a ver tu cliente en Meta. Ideal para decidir cuáles subir al test.</p>
@@ -357,7 +367,9 @@
 (() => {
   const $ = s => document.querySelector(s), $$ = s => Array.from(document.querySelectorAll(s));
   const form = $('#f');
-  let prodImg = null; let ads = [], sel = null, formato = '9:16', filtro = 'todos', tandas = 0, busy = null, logo = null;
+  let prods = [], prodDef = null; const prodImgs = {};
+  const prodOf = a => { const id = (a && a.prodId) || prodDef; return (id && prodImgs[id]) || (prodDef && prodImgs[prodDef]) || null; };
+  let ads = [], sel = null, formato = '9:16', filtro = 'todos', tandas = 0, busy = null, logo = null;
   const FORMATOS = {'1:1':{h:1080, iw:768, ih:768}, '4:5':{h:1350, iw:688, ih:860}, '9:16':{h:1920, iw:576, ih:1024}};
 
   // ---------- Opciones que elige la empresa ----------
@@ -372,6 +384,8 @@
     rulo: {def:'variado', items:[['variado','Variado'],['ondas','Ondas'],['rulos','Rulos'],['afro','Afro / coily']]},
     piel: {def:'variado', items:[['variado','Variado'],['clara','Clara'],['trigueña','Trigueña'],['morena','Morena'],['negra','Negra']]},
     personas: {def:'una', items:[['una','Una mujer'],['dos','Dos amigas']]},
+    prodModo: {def:'mano', items:[['mano','La IA lo pone en la mano'],['apoyado','La IA lo apoya en la escena'],['pegar','Pegarlo encima (recortado)']]},
+    modeloInt: {def:'kontext', items:[['kontext','Kontext'],['klein','Klein'],['gptimage','GPT Image']]},
     pote: {def:'si', items:[['si','Pote genérico de la IA'],['no','Sin pote (uso mi foto del producto)']]},
     layout: {def:'pop', items:[['pop','Marcador'],['auto','Que elija la IA'],['editorial','Editorial'],['impacto','Impacto'],['tarjeta','Tarjeta']]},
     tipo: {def:'moderna', items:[['moderna','Moderna'],['elegante','Elegante']]},
@@ -574,17 +588,26 @@ Reglas:
     };
     const ropa = pick(['a colorful casual cotton t-shirt','a light linen button-up blouse','a cozy pastel knit sweater','a denim jacket over a white tee','a flowy summer blouse with sleeves'], s >> 9);
     const persona = o.personas === 'dos' ? `two fictional smiling women friends in casual everyday clothes, one ${edad} with ${rulo} and ${piel}, both with defined curly hair` : `a fictional ${edad} woman with ${rulo} and ${piel}, wearing ${ropa}`;
-    const pote = (o.pote === 'si' && !prodImg) ? ', happily showing a small plain white jar of hair cream to the camera at chest height' : '';
+    const pote = (o.pote === 'si' && !prodOf(a)) ? ', happily showing a small plain white jar of hair cream to the camera at chest height' : '';
     const estilo = {editorial:'bright cheerful hair care advertising photo for a family-friendly cosmetics brand', natural:'bright authentic lifestyle photo for a hair care brand', minimal:'clean bright minimalist studio photo for a hair care brand'}[o.foto] || 'bright cheerful hair care advertising photo';
-    const libre = prodImg ? ', empty hands touching her hair, nothing in her hands, no bottles or jars in the scene, clear space in the lower right corner' : '';
+    const libre = (prodOf(a) && !integra(a)) ? ', empty hands touching her hair, nothing in her hands, no bottles or jars in the scene, clear space in the lower right corner' : '';
     const comp = libre + ((a.layout === 'impacto' || a.layout === 'pop') ? 'subject placed in the lower two thirds, calm empty background space at the top for a headline' : 'subject in the upper two thirds, calm empty space in the lower third for text');
     return `${estilo} of ${persona}${pote}, ${ideaSegura(a.idea, a.seed)}, ${escenas[o.escena] || escenas.color}, ${comp}, warm genuine smile, friendly and confident, modest and fully clothed, focus on her healthy defined curly hair, real photograph of a real-looking person, natural skin texture with pores, natural makeup, shot on a full-frame DSLR with an 85mm lens, shallow depth of field, candid commercial photography, not an illustration, not anime, not a 3D render, not CGI, bright high-key lighting, airy pastel colors, sharp focus, no text, no letters, no logos, no watermark`;
   }
   const IDEAS_OK = ['smiling at the camera','touching her curls with both hands','laughing joyfully','looking over her shoulder with a smile','playing with a curl and smiling','eyes closed, enjoying the moment, smiling','confident pose with a big smile','showing her curls proudly'];
   function ideaSegura(t, s){ return /(sexy|sensual|seduct|lingerie|bra|bikini|nude|naked|bed|undress|strap|lip bit|biting|desnud|provoc)/i.test(t || '') || !t ? pick(IDEAS_OK, s) : t; }
+  function integra(a){ const o = a.op || opt; return (o.prodModo || 'mano') !== 'pegar' && !!prodOf(a) && !!key(); }
+  function fotoPromptInt(a){
+    const base = fotoPrompt(Object.assign({}, a, {op: Object.assign({}, a.op || opt, {pote: 'no'})}));
+    const modo = (a.op || opt).prodModo === 'apoyado'
+      ? 'this exact product from the reference image stands upright on a small table or shelf right next to her, label facing the camera, clearly visible and in focus'
+      : 'she holds this exact product from the reference image in one hand at chest height, label facing the camera, fingers naturally wrapped around it, clearly visible and in focus';
+    return `Create a brand-new realistic advertising photograph that features the product shown in the reference image. Keep the product exactly identical: same bottle shape, colors, cap and label design, do not change or redraw the label. ${modo}. Scene: ${base.replace(/^[^,]*of /, '')}`;
+  }
   function imageURL(a){
-    const f = FORMATOS[formato], enc = encodeURIComponent(fotoPrompt(a)), k = key();
-    const q = `width=${f.iw}&height=${f.ih}&seed=${a.seed}&model=flux&nologo=true&enhance=false&safe=true`;
+    const f = FORMATOS[formato], k = key(); a._intReq = false;
+    const enc = encodeURIComponent(fotoPrompt(a)), model = 'flux';
+    const q = `width=${f.iw}&height=${f.ih}&seed=${a.seed}&model=${model}&nologo=true&enhance=false&safe=true`;
     return k ? `https://gen.pollinations.ai/image/${enc}?${q}` : `https://image.pollinations.ai/prompt/${enc}?${q}`;
   }
   function shrink(blob, max){
@@ -598,8 +621,8 @@ Reglas:
     try {
       const k = key(), hdrs = k && url.includes('gen.pollinations.ai') ? {Authorization: 'Bearer ' + k} : {};
       const res = await fetch(url, {headers: hdrs});
-      if (res.status === 402 || res.status === 429) return {retry: Number(res.headers.get('Retry-After')) || 15, code: res.status};
-      if (res.status === 401 || res.status === 403) return {fatal: true, code: res.status};
+      if (res.status === 402 || res.status === 429){ const t = await res.text().catch(() => ''); if (/balance|pollen|insufficient|credit|tier|paid/i.test(t)) return {fatal: true, code: res.status, saldo: true}; return {retry: Number(res.headers.get('Retry-After')) || 15, code: res.status}; }
+      if (res.status === 401 || res.status === 403){ const t = await res.text().catch(() => ''); return {fatal: true, code: res.status, saldo: /balance|pollen|insufficient|credit|tier|paid/i.test(t)}; }
       if (!res.ok) return {err: 'HTTP ' + res.status, code: res.status};
       const blob = await res.blob();
       if (!/^image\//.test(blob.type)){ const t = await blob.text().catch(() => ''); return {err: 'la respuesta no es una imagen' + (t ? ': ' + t.slice(0, 120) : '')}; }
@@ -618,6 +641,26 @@ Reglas:
       });
     }
   }
+  async function editImage(a){
+    const P = prodOf(a), k = key(), f = FORMATOS[formato]; a._intReq = true;
+    const blob = await new Promise(res => { const c = document.createElement('canvas'), m = Math.min(1, 1024 / Math.max(P.width, P.height)); c.width = Math.round(P.width * m); c.height = Math.round(P.height * m); const x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height); x.drawImage(P, 0, 0, c.width, c.height); c.toBlob(res, 'image/png'); });
+    const send = async withSize => {
+      const fd = new FormData(); fd.append('model', opt.modeloInt || 'kontext'); fd.append('prompt', fotoPromptInt(a)); fd.append('image', blob, 'producto.png'); fd.append('n', '1'); fd.append('seed', String(a.seed));
+      if (withSize) fd.append('size', `${f.iw}x${f.ih}`);
+      return fetch('https://gen.pollinations.ai/v1/images/edits', {method: 'POST', headers: {Authorization: 'Bearer ' + k}, body: fd});
+    };
+    let res; try { res = await send(true); if (res.status === 400) res = await send(false); } catch (e) { return {err: 'no se pudo conectar con la IA que integra el producto'}; }
+    const txt = () => res.text().catch(() => '');
+    if (res.status === 402 || res.status === 429){ const t = await txt(); if (/balance|pollen|insufficient|credit|tier|paid/i.test(t)) return {fatal: true, code: res.status, saldo: true}; return {retry: Number(res.headers.get('Retry-After')) || 15, code: res.status}; }
+    if (res.status === 401 || res.status === 403){ const t = await txt(); return {fatal: true, code: res.status, saldo: /balance|pollen|insufficient|credit|tier|paid/i.test(t)}; }
+    if (!res.ok){ const t = await txt(); return {err: 'HTTP ' + res.status + (t ? ': ' + t.slice(0, 140) : '')}; }
+    const ct = res.headers.get('content-type') || '';
+    if (ct.startsWith('image/')) return {data: await shrink(await res.blob(), 1080)};
+    const j = await res.json().catch(() => null), it = j && j.data && j.data[0];
+    if (it && it.b64_json){ const bin = atob(it.b64_json), u8 = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i); return {data: await shrink(new Blob([u8], {type: 'image/png'}), 1080)}; }
+    if (it && it.url) return await loadImage(it.url);
+    return {err: 'la IA respondió sin imagen'};
+  }
   let lastImgErr = '';
   async function runQueue(){
     if (qRunning) return; qRunning = true;
@@ -626,11 +669,11 @@ Reglas:
       a.imgState = 'cargando'; delete a.imgErr; refresh(a); fotoStatus();
       let ok = false, fatal = false;
       for (let i = 0; i < 8 && !ok && !fatal; i++){
-        const r = await loadImage(imageURL(a));
-        if (r.data){ a.img = r.data; a.tainted = false; ok = true; }
-        else if (r.remote){ a.img = r.remote; a.tainted = true; ok = true; }
+        const r = integra(a) ? await editImage(a) : await loadImage(imageURL(a));
+        if (r.data){ a.img = r.data; a.tainted = false; ok = true; a.integrado = !!a._intReq; }
+        else if (r.remote){ a.img = r.remote; a.tainted = true; ok = true; a.integrado = !!a._intReq; }
         else if (r.retry){ fotoStatus(`Límite gratis de fotos: esperando ${r.retry} segundos… (con una clave gratis esto no pasa)`); await sleep(r.retry * 1000); }
-        else if (r.fatal){ fatal = true; a.imgErr = 'La IA rechazó el pedido (código ' + r.code + '). Revisá tu clave en "Conexión con la IA".'; }
+        else if (r.fatal){ fatal = true; a.imgErr = r.saldo ? (a._intReq ? 'Tu saldo de Pollinations no alcanza para el modelo que integra el producto. Probá otro modelo en Ajustes avanzados, conseguí más saldo en Misiones, o elegí "Pegarlo encima".' : 'Tu saldo de Pollinations se terminó. Conseguí más en Misiones.') : 'La IA rechazó el pedido (código ' + r.code + '). Revisá tu clave en "Conexión con la IA".'; }
         else { a.imgErr = r.err; await sleep(3000 + i * 2000); }
       }
       a.imgEl = null; a.imgState = ok ? 'ok' : 'error'; if (!ok){ lastImgErr = a.imgErr || 'sin respuesta'; }
@@ -766,14 +809,25 @@ Reglas:
     else { for (let k = -1; k <= 1; k++){ ctx.moveTo(cx - 16 + k * 2, cy + k * 12); ctx.bezierCurveTo(cx - 6, cy - 8 + k * 12, cx + 6, cy + 8 + k * 12, cx + 16, cy + k * 12); } }
     ctx.stroke(); ctx.restore();
   }
+  function drawPhoto(ctx, im, dx, dy, dw, dh, a, focus){
+    const fx = a.fx || {}, z = Math.max(1, (fx.zoom || 100) / 100), fy = fx.posY != null ? fx.posY / 100 : focus;
+    const ir = im.width / im.height, br = dw / dh; let sw, sh;
+    if (ir > br){ sh = im.height; sw = sh * br; } else { sw = im.width; sh = sw / br; }
+    sw /= z; sh /= z; const sx = (im.width - sw) / 2, sy = Math.max(0, Math.min(im.height - sh, (im.height - sh) * fy));
+    ctx.save(); ctx.filter = `brightness(${1 + (fx.brillo || 0) / 100}) contrast(${1 + (fx.contraste || 0) / 100}) saturate(${1 + (fx.satur || 0) / 100})`;
+    ctx.drawImage(im, sx, sy, sw, sh, dx, dy, dw, dh); ctx.restore();
+    const w = fx.calidez || 0;
+    if (w){ ctx.save(); ctx.globalCompositeOperation = 'soft-light'; ctx.fillStyle = w > 0 ? `rgba(255,140,40,${Math.abs(w) / 100 * .7})` : `rgba(40,120,255,${Math.abs(w) / 100 * .7})`; ctx.fillRect(dx, dy, dw, dh); ctx.restore(); }
+    if (fx.vineta){ const g = ctx.createRadialGradient(dx + dw / 2, dy + dh / 2, Math.min(dw, dh) * .35, dx + dw / 2, dy + dh / 2, Math.max(dw, dh) * .75); g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, `rgba(0,0,0,${fx.vineta / 100 * .6})`); ctx.fillStyle = g; ctx.fillRect(dx, dy, dw, dh); }
+  }
   function drawProd(ctx, a, W, H, yBottom, base){
-    if (!prodImg || a.showProd === false) return;
+    const P = prodOf(a); if (!P || a.showProd === false || a.integrado) return;
     const mult = {S:.7, M:1, L:1.3}[a.prodSize || 'M'] || 1;
-    let ph = Math.min(base * mult, H * .42), pw = ph * prodImg.width / prodImg.height;
-    if (pw > W * .48){ pw = W * .48; ph = pw * prodImg.height / prodImg.width; }
+    let ph = Math.min(base * mult, H * .42), pw = ph * P.width / P.height;
+    if (pw > W * .48){ pw = W * .48; ph = pw * P.height / P.width; }
     const x = a.prodPos === 'izq' ? 56 : W - pw - 56, y = yBottom - ph;
     ctx.save(); ctx.fillStyle = 'rgba(0,0,0,.18)'; ctx.filter = 'blur(14px)'; ctx.beginPath(); ctx.ellipse(x + pw / 2, yBottom - 4, pw * .42, 16, 0, 0, Math.PI * 2); ctx.fill(); ctx.restore();
-    ctx.save(); ctx.shadowColor = 'rgba(0,0,0,.22)'; ctx.shadowBlur = 24; ctx.shadowOffsetY = 10; ctx.drawImage(prodImg, x, y, pw, ph); ctx.restore();
+    ctx.save(); ctx.shadowColor = 'rgba(0,0,0,.22)'; ctx.shadowBlur = 24; ctx.shadowOffsetY = 10; ctx.drawImage(P, x, y, pw, ph); ctx.restore();
   }
   function brandMark(ctx, a, W, d){
     if (!a.showLogo) return;
@@ -786,9 +840,7 @@ Reglas:
     ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
     const pTop = Math.round(H * (H > 1500 ? .42 : H > 1200 ? .40 : .36));
     if (a.imgEl){
-      const im = a.imgEl, rw = W, rh = H - pTop + 140, ir = im.width / im.height, br = rw / rh; let sw, sh, sx, sy;
-      if (ir > br){ sh = im.height; sw = sh * br; sx = (im.width - sw) / 2; sy = 0; } else { sw = im.width; sh = sw / br; sx = 0; sy = (im.height - sh) * .35; }
-      ctx.drawImage(im, sx, sy, sw, sh, 0, pTop - 140, rw, rh);
+      drawPhoto(ctx, a.imgEl, 0, pTop - 140, W, H - pTop + 140, a, .35);
       const g = ctx.createLinearGradient(0, pTop - 140, 0, pTop + 120); g.addColorStop(0, bg); g.addColorStop(1, bg + '00'); ctx.fillStyle = g; ctx.fillRect(0, pTop - 140, W, 262);
     } else {
       ctx.fillStyle = 'rgba(27,20,24,.45)'; ctx.font = `600 34px ${SANS}`; ctx.textAlign = 'center';
@@ -800,7 +852,7 @@ Reglas:
       else { ctx.fillStyle = ink; ctx.font = `800 50px ${SANS}`; ctx.textAlign = 'center'; ctx.fillText((d.marca || '').toLowerCase().replace(/\s+/g, ''), W / 2, 112); ctx.textAlign = 'left'; }
     }
     // Titular escrito a mano
-    const hd = fit(ctx, a.h, s => `400 ${s}px ${SCRIPT}`, 132, W - 2 * X - 20, 3, 70);
+    const hd = fit(ctx, a.h, s => `400 ${s}px ${SCRIPT}`, 132 * (a.hScale || 1), W - 2 * X - 20, 3, 70);
     ctx.save(); ctx.translate(X, 0); ctx.rotate(-0.045);
     let y = 190 + Math.max(0, (pTop - 600) * .25);
     ctx.fillStyle = ink; ctx.font = `400 ${hd.size}px ${SCRIPT}`;
@@ -826,7 +878,7 @@ Reglas:
     }
     // Íconos de beneficios
     if (a.kind === 'checks'){
-      const by = H - 380, bw = W - 2 * X - (prodImg && a.showProd !== false ? W * .42 - 20 : 0), bx0 = prodImg && a.showProd !== false && a.prodPos === 'izq' ? W - X - bw : X; ctx.fillStyle = 'rgba(255,255,255,.88)'; rr(ctx, bx0, by, bw, 170, 28); ctx.fill();
+      const by = H - 380, bw = W - 2 * X - (prodOf(a) && a.showProd !== false && !a.integrado ? W * .42 - 20 : 0), bx0 = prodOf(a) && a.showProd !== false && !a.integrado && a.prodPos === 'izq' ? W - X - bw : X; ctx.fillStyle = 'rgba(255,255,255,.88)'; rr(ctx, bx0, by, bw, 170, 28); ctx.fill();
       d.beneficios.slice(0, 3).forEach((b, i) => { const cx = bx0 + bw * (i + .5) / 3; icono(ctx, cx, by + 62, i, ink); ctx.fillStyle = ink; ctx.font = `600 24px ${SANS}`; ctx.textAlign = 'center'; ctx.fillText(b.length > 22 ? b.slice(0, 21) + '…' : b, cx, by + 138); });
       ctx.textAlign = 'left';
     }
@@ -843,9 +895,7 @@ Reglas:
     if ((a.layout || '') === 'pop'){ drawPop(ctx, a, W, H, d, acc); ctx.setTransform(1, 0, 0, 1, 0, 0); return; }
     // Foto
     if (a.imgEl){
-      const im = a.imgEl, ir = im.width / im.height, br = W / H; let sw, sh, sx, sy;
-      if (ir > br){ sh = im.height; sw = sh * br; sx = (im.width - sw) / 2; sy = 0; } else { sw = im.width; sh = sw / br; sx = 0; sy = (im.height - sh) / 2; }
-      ctx.drawImage(im, sx, sy, sw, sh, 0, 0, W, H);
+      drawPhoto(ctx, a.imgEl, 0, 0, W, H, a, .5);
     } else {
       const g = ctx.createLinearGradient(0, 0, W, H); g.addColorStop(0, a.bg || '#F7B98B'); g.addColorStop(1, '#FBEDE4'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
       ctx.fillStyle = 'rgba(42,22,32,.55)'; ctx.font = `600 34px ${SANS}`; ctx.textAlign = 'center';
@@ -873,7 +923,7 @@ Reglas:
     function checks(x, y, color, mark){ ctx.font = `600 30px ${SANS}`; d.beneficios.forEach((b, i) => { const cy = y + i * 48; ctx.strokeStyle = mark; ctx.lineWidth = 5; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(x, cy - 8); ctx.lineTo(x + 9, cy + 2); ctx.lineTo(x + 26, cy - 18); ctx.stroke(); ctx.fillStyle = color; ctx.fillText(b, x + 44, cy + 2); }); return a.kind === 'checks' ? d.beneficios.length * 48 + 10 : 0; }
     if (lay === 'tarjeta'){
       const cw = W - 96, maxW = cw - 112;
-      const hd = fit(ctx, a.h, display, a.font === 'elegante' ? 80 : 74, maxW, 3, 46);
+      const hd = fit(ctx, a.h, display, (a.font === 'elegante' ? 80 : 74) * (a.hScale || 1), maxW, 3, 46);
       ctx.font = `500 30px ${SANS}`; const sub = a.s ? wrap(ctx, a.s, maxW).slice(0, 2) : [];
       const chH = a.kind === 'checks' ? d.beneficios.length * 48 + 10 : 0;
       const chipH = chips.length ? 70 : 0;
@@ -893,7 +943,7 @@ Reglas:
       const g2 = ctx.createLinearGradient(0, H - 300, 0, H); g2.addColorStop(0, 'rgba(20,10,16,0)'); g2.addColorStop(1, 'rgba(20,10,16,.6)'); ctx.fillStyle = g2; ctx.fillRect(0, H - 300, W, 300);
       let y = (a.showLogo ? 160 : 90) + off * .3;
       tagPill(X, y, acc, onAcc(acc)); y += 46 + 20;
-      const hd = fit(ctx, a.font === 'elegante' ? a.h : a.h.toUpperCase(), display, a.font === 'elegante' ? 104 : 96, W - 2 * X, 4, 52);
+      const hd = fit(ctx, a.font === 'elegante' ? a.h : a.h.toUpperCase(), display, (a.font === 'elegante' ? 104 : 96) * (a.hScale || 1), W - 2 * X, 4, 52);
       ctx.fillStyle = white; ctx.font = display(hd.size); ctx.shadowColor = 'rgba(0,0,0,.25)'; ctx.shadowBlur = 16;
       hd.lines.forEach(l => { y += hd.size * .98; ctx.fillText(l, X, y); }); ctx.shadowBlur = 0;
       ctx.fillStyle = acc; ctx.fillRect(X, y + 22, 120, 10); y += 40;
@@ -905,7 +955,7 @@ Reglas:
       if (a.showLogo){ ctx.font = `600 26px ${SANS}`; ctx.fillStyle = 'rgba(255,255,255,.9)'; ctx.textAlign = 'right'; ctx.fillText(d.tienda, W - X, H - 72 - 30); ctx.textAlign = 'left'; }
     } else {
       // editorial
-      const hd = fit(ctx, a.h, display, a.font === 'elegante' ? 96 : 86, W - 2 * X - 40, 3, 48);
+      const hd = fit(ctx, a.h, display, (a.font === 'elegante' ? 96 : 86) * (a.hScale || 1), W - 2 * X - 40, 3, 48);
       ctx.font = `500 32px ${SANS}`; const sub = a.s ? wrap(ctx, a.s, W - 2 * X).slice(0, 2) : [];
       const chH = a.kind === 'checks' ? d.beneficios.length * 48 + 20 : 0, chipH = chips.length ? 70 : 0;
       const block = 46 + 22 + hd.lines.length * hd.size + (sub.length ? 14 + sub.length * 42 : 0) + chH + chipH + 36 + 84;
@@ -965,10 +1015,20 @@ Reglas:
         <label class="tog">Mostrar sello de precio<input type="checkbox" data-t="showPrice" ${a.showPrice ? 'checked' : ''} ${a.kind === 'price' ? '' : 'disabled'}></label>
         <label class="tog">Mostrar marca (Salon Line / logo)<input type="checkbox" data-t="showLogo" ${a.showLogo ? 'checked' : ''}></label>
       </div>
+      <div class="group"><span class="glab">Ajustes de foto</span>
+        <div class="opt">${[['natural','Natural'],['luminoso','Luminoso'],['calido','Cálido'],['vibrante','Vibrante'],['suave','Suave'],['frio','Frío']].map(([v, t]) => `<button type="button" data-preset="${v}">${t}</button>`).join('')}</div>
+        ${[['brillo','Brillo',-40,40,'%'],['contraste','Contraste',-40,40,'%'],['satur','Saturación',-60,60,'%'],['calidez','Calidez (tono)',-60,60,''],['vineta','Viñeta',0,100,''],['zoom','Zoom',100,170,'%'],['posY','Encuadre vertical',0,100,'']].map(([k, n, mn, mx, u]) => { const v = (a.fx || {})[k] != null ? a.fx[k] : (k === 'zoom' ? 100 : k === 'posY' ? (a.layout === 'pop' ? 35 : 50) : 0); return `<label class="rng"><span>${n}</span><input type="range" min="${mn}" max="${mx}" value="${v}" data-fx="${k}"><output>${v}${u}</output></label>`; }).join('')}
+        <label class="rng"><span>Tamaño del titular</span><input type="range" min="75" max="130" value="${Math.round((a.hScale || 1) * 100)}" data-hs="1"><output>${Math.round((a.hScale || 1) * 100)}%</output></label>
+        <div class="row"><button class="btn sm" type="button" data-act="fxreset">Restablecer</button><button class="btn sm" type="button" data-act="fxall">Aplicar a todos</button></div>
+      </div>
       <div class="group"><span class="glab">Producto en este anuncio</span>
-        ${prodImg ? `<label class="tog">Mostrar mi producto<input type="checkbox" data-t="showProd" ${a.showProd !== false ? 'checked' : ''}></label>
+        <div class="f" style="gap:6px"><span>Cómo aparece</span><div class="opt">${OPTS.prodModo.items.map(([v, t]) => `<button type="button" data-po="prodModo" data-v="${v}" aria-pressed="${((a.op || opt).prodModo || 'mano') === v}">${t}</button>`).join('')}</div></div>
+        ${(a.op || opt).prodModo !== 'pegar' && prods.length && !key() ? '<p class="status err" style="margin:0">Para que la IA ponga el producto en la foto hace falta la clave (Conexión con la IA).</p>' : ''}
+        ${a.integrado ? '<p class="hint" style="margin:0">Esta foto ya tiene el producto integrado por la IA.</p>' : ''}
+        ${prods.length ? `<div class="f" style="gap:6px"><span>Producto</span><div class="opt">${prods.map(pp => `<button type="button" data-prodid="${pp.id}" aria-pressed="${((a.prodId || prodDef) === pp.id)}">${esc(pp.name)}</button>`).join('')}</div></div>
+        <label class="tog">Mostrar mi producto<input type="checkbox" data-t="showProd" ${a.showProd !== false ? 'checked' : ''}></label>
         <div class="f" style="gap:6px"><span>Posición</span><div class="opt">${[['izq','Izquierda'],['der','Derecha']].map(([v, t]) => `<button type="button" data-pp="prodPos" data-v="${v}" aria-pressed="${(a.prodPos || 'der') === v}">${t}</button>`).join('')}</div></div>
-        <div class="f" style="gap:6px"><span>Tamaño</span><div class="opt">${[['S','Chico'],['M','Mediano'],['L','Grande']].map(([v, t]) => `<button type="button" data-pp="prodSize" data-v="${v}" aria-pressed="${(a.prodSize || 'M') === v}">${t}</button>`).join('')}</div></div>` : '<p class="hint" style="margin:0">Subí la foto real del producto en el panel izquierdo (sección Producto) y vas a poder ubicarla en cada anuncio.</p>'}
+        <div class="f" style="gap:6px"><span>Tamaño</span><div class="opt">${[['S','Chico'],['M','Mediano'],['L','Grande']].map(([v, t]) => `<button type="button" data-pp="prodSize" data-v="${v}" aria-pressed="${(a.prodSize || 'M') === v}">${t}</button>`).join('')}</div></div>` : '<p class="hint" style="margin:0">Subí tus productos en el panel izquierdo (sección Producto) y elegí cuál va en cada anuncio.</p>'}
         ${a.enfoque === 'urgencia' || a.kind === 'deadline' || a.kind === 'stock' ? `<label class="f">Frase de urgencia<input data-e="band" value="${esc(a.band || (a.kind === 'stock' ? '¡Últimas unidades!' : '¡No te la pierdas!'))}"></label>` : ''}
         <div class="f" style="gap:6px"><span>Enfoque</span><div class="opt">${['precio','calidad','urgencia'].map(v => `<button type="button" data-enf="${v}" aria-pressed="${a.enfoque === v}">${v[0].toUpperCase() + v.slice(1)}</button>`).join('')}</div></div>
         <div class="f" style="gap:6px"><span>Elemento destacado</span><div class="opt">${[['price','Sello de precio'],['checks','Íconos de beneficios'],['deadline','Fecha límite'],['stock','Stock'],['none','Ninguno']].map(([v, t]) => `<button type="button" data-kind="${v}" aria-pressed="${a.kind === v}">${t}</button>`).join('')}</div></div>
@@ -997,6 +1057,13 @@ Reglas:
     c.querySelector('[data-act=texto]').onclick = () => otroTexto(a);
     c.querySelector('[data-act=subir]').onchange = e => { const f = e.target.files && e.target.files[0]; if (f) shrink(f, 1080).then(u => { a.img = u; a.imgEl = null; a.imgState = 'propia'; refresh(a); persist(); toast('Foto subida'); }); };
     c.querySelectorAll('[data-po]').forEach(b => b.onclick = () => { a.op = Object.assign({}, a.op || opt); a.op[b.dataset.po] = b.dataset.v; if (b.dataset.po === 'fondo' && FONDOS[b.dataset.v]) a.bg = FONDOS[b.dataset.v][0]; c.querySelectorAll(`[data-po="${b.dataset.po}"]`).forEach(x => x.setAttribute('aria-pressed', String(x === b))); redraw(); });
+    c.querySelectorAll('[data-prodid]').forEach(b => b.onclick = () => { a.prodId = b.dataset.prodid; a.integrado = false; renderCtrl(); redraw(); toast('Producto cambiado. Tocá "Crear foto con estas opciones" para que la IA lo integre.'); });
+    const PRESETS = {natural:{}, luminoso:{brillo:12, contraste:-4, satur:6}, calido:{calidez:30, satur:8, brillo:4}, vibrante:{satur:35, contraste:12}, suave:{contraste:-15, satur:-12, brillo:8}, frio:{calidez:-28, satur:-5}};
+    c.querySelectorAll('[data-preset]').forEach(b => b.onclick = () => { a.fx = Object.assign({zoom: (a.fx || {}).zoom, posY: (a.fx || {}).posY}, PRESETS[b.dataset.preset]); renderCtrl(); redraw(); });
+    c.querySelectorAll('[data-fx]').forEach(el => el.addEventListener('input', () => { a.fx = Object.assign({}, a.fx); a.fx[el.dataset.fx] = Number(el.value); el.nextElementSibling.textContent = el.value + (['brillo','contraste','satur','zoom'].includes(el.dataset.fx) ? '%' : ''); redraw(); }));
+    c.querySelector('[data-hs]').addEventListener('input', e => { a.hScale = Number(e.target.value) / 100; e.target.nextElementSibling.textContent = e.target.value + '%'; redraw(); });
+    c.querySelector('[data-act=fxreset]').onclick = () => { a.fx = {}; a.hScale = 1; renderCtrl(); redraw(); };
+    c.querySelector('[data-act=fxall]').onclick = () => { ads.forEach(x => { if (x !== a){ x.fx = Object.assign({}, a.fx, {posY: (x.fx || {}).posY}); x.hScale = a.hScale; } }); renderStrip(); persist(); toast('Ajustes aplicados a todos los anuncios'); };
     c.querySelector('[data-act=foto2]').onclick = () => { a.seed = Math.floor(Math.random() * 1e9); queueImage(a); toast('Creando la foto de ' + a.id + ' con tus opciones…'); };
     c.querySelectorAll('[data-pp]').forEach(b => b.onclick = () => { a[b.dataset.pp] = b.dataset.v; c.querySelectorAll(`[data-pp="${b.dataset.pp}"]`).forEach(x => x.setAttribute('aria-pressed', String(x === b))); redraw(); });
     c.querySelectorAll('[data-enf]').forEach(b => b.onclick = () => { a.enfoque = b.dataset.enf; renderCtrl(); renderStrip(); redraw(); });
@@ -1156,10 +1223,35 @@ Reglas:
     const c2 = document.createElement('canvas'); c2.width = x1 - x0 + 1; c2.height = y1 - y0 + 1; c2.getContext('2d').drawImage(c, x0, y0, c2.width, c2.height, 0, 0, c2.width, c2.height);
     return {url: c2.toDataURL('image/png'), quitado: true};
   }
-  function setProd(url, aviso){ const im = new Image(); im.onload = () => { prodImg = im; const t = $('#thumbProd'); t.src = url; t.hidden = false; renderAll(); }; im.src = url; try { localStorage.setItem('ads-prod', url); } catch {} if (aviso) toast(aviso); }
-  $('#prodClear').onclick = () => { prodImg = null; $('#thumbProd').hidden = true; try { localStorage.removeItem('ads-prod'); } catch {} renderAll(); };
-  $('#prodFile').addEventListener('change', e => { const f = e.target.files && e.target.files[0]; if (!f) return; const u = URL.createObjectURL(f), im = new Image(); im.onload = () => { const r = quitarFondo(im); URL.revokeObjectURL(u); opt.pote = 'no'; renderOpts(); persist(); setProd(r.url, r.quitado ? 'Listo: le saqué el fondo blanco al producto. Tocá "Otra foto" para fotos sin pote genérico.' : 'Producto cargado. Para que quede recortado, usá una foto con fondo blanco liso o un PNG sin fondo.'); }; im.src = u; });
-  try { const pu = localStorage.getItem('ads-prod'); if (pu) setProd(pu); } catch {}
+  function loadProdImgs(){ prods.forEach(pp => { if (!prodImgs[pp.id]){ const im = new Image(); im.onload = () => { prodImgs[pp.id] = im; renderAll(); }; im.src = pp.url; } }); }
+  function saveProds(){ try { localStorage.setItem('ads-prods', JSON.stringify({prods, prodDef})); } catch { toast('No entran más productos en la memoria del navegador: borrá alguno'); } }
+  function renderProds(){
+    const box = $('#prodList'); box.innerHTML = prods.length ? '' : '<p class="hint" style="margin:0">Todavía no subiste productos.</p>';
+    prods.forEach(pp => {
+      const row = document.createElement('div'); row.className = 'prod';
+      row.innerHTML = `<img src="${pp.url}" alt=""><input value="${esc(pp.name)}" aria-label="Nombre del producto"><button type="button" aria-pressed="${pp.id === prodDef}" title="Usar por defecto en los anuncios nuevos">${pp.id === prodDef ? 'Principal' : 'Usar'}</button><button type="button" aria-label="Quitar producto">✕</button>`;
+      row.querySelector('input').oninput = e => { pp.name = e.target.value; saveProds(); renderCtrl(); };
+      const [bUse, bDel] = row.querySelectorAll('button');
+      bUse.onclick = () => { prodDef = pp.id; saveProds(); renderProds(); renderAll(); };
+      bDel.onclick = () => { prods = prods.filter(x => x !== pp); delete prodImgs[pp.id]; if (prodDef === pp.id) prodDef = (prods[0] || {}).id || null; ads.forEach(a => { if (a.prodId === pp.id) a.prodId = null; }); saveProds(); renderProds(); renderAll(); };
+      box.appendChild(row);
+    });
+  }
+  $('#prodFile').addEventListener('change', e => {
+    const files = Array.from(e.target.files || []); if (!files.length) return; let n = 0, quit = 0;
+    files.forEach(f => { const u = URL.createObjectURL(f), im = new Image(); im.onload = () => {
+      const r = quitarFondo(im); URL.revokeObjectURL(u); if (r.quitado) quit++;
+      const pp = {id: 'p' + Math.random().toString(36).slice(2, 8), name: f.name.replace(/\.[^.]+$/, '').slice(0, 40), url: r.url}; prods.push(pp); if (!prodDef) prodDef = pp.id;
+      if (++n === files.length){ opt.pote = 'no'; renderOpts(); saveProds(); loadProdImgs(); renderProds(); persist(); toast(`${n} producto${n > 1 ? 's' : ''} agregado${n > 1 ? 's' : ''}${quit ? ' (le saqué el fondo blanco)' : ''}. Tocá "Otra foto" para que la IA lo integre.`); }
+    }; im.src = u; });
+    e.target.value = '';
+  });
+  try {
+    const st = JSON.parse(localStorage.getItem('ads-prods') || 'null');
+    if (st){ prods = st.prods || []; prodDef = st.prodDef || (prods[0] || {}).id || null; }
+    else { const old = localStorage.getItem('ads-prod'); if (old){ prods = [{id: 'p1', name: 'Producto', url: old}]; prodDef = 'p1'; saveProds(); } }
+  } catch {}
+  renderProds(); loadProdImgs();
   form.logo.addEventListener('change', e => { const f = e.target.files && e.target.files[0]; if (!f) return; const u = URL.createObjectURL(f), im = new Image(); im.onload = () => { logo = im; const t = $('#thumbLogo'); t.src = u; t.hidden = false; renderAll(); }; im.src = u; });
 
   restore(); renderOpts();
