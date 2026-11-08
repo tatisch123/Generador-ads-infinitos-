@@ -283,6 +283,7 @@
 
       <details class="sec" open><summary>Foto con IA</summary>
         <div class="fields">
+          <div class="f" style="gap:8px"><span>Tipo de foto</span><div class="opt" data-opt="tipofoto"></div><span class="hint">"Variado" reparte distintos tipos y escenas en cada tanda. Después podés cambiar cada anuncio.</span></div>
           <div class="f" style="gap:8px"><span>Escena</span><div class="opt" data-opt="escena"></div></div>
           <div class="f" style="gap:8px"><span>Color de fondo</span><div class="opt" data-opt="fondo"></div></div>
           <div class="f" style="gap:8px"><span>Estilo de foto</span><div class="opt" data-opt="foto"></div></div>
@@ -377,7 +378,8 @@
     tono: {def:'cercano', items:[['cercano','Cercano'],['divertido','Divertido'],['elegante','Elegante'],['directo','Directo']]},
     cantidad: {def:'10', items:[['5','5'],['10','10']]},
     textos: {def:'ia', items:[['ia','Que lo escriba la IA'],['yo','Lo escribo yo']]},
-    escena: {def:'color', items:[['color','Estudio de color'],['flores','Flores y frutas'],['bano','Baño luminoso'],['ciudad','Calle de Montevideo'],['playa','Playa'],['amigas','Con amigas']]},
+    tipofoto: {def:'variado', items:[['variado','Variado (recomendado)'],['modelo','Modelo con rulos'],['producto','Producto protagonista'],['antesdespues','Antes y después'],['rulos','Detalle de rulos'],['textura','Textura de la crema'],['manos','Manos aplicando'],['flatlay','Vista desde arriba']]},
+    escena: {def:'variado', items:[['variado','Variada'],['color','Estudio de color'],['flores','Flores y frutas'],['bano','Baño luminoso'],['ciudad','Calle de Montevideo'],['playa','Playa'],['amigas','Con amigas']]},
     fondo: {def:'variado', items:[['variado','Variado'],['rosa','Rosa'],['celeste','Celeste'],['coral','Coral'],['durazno','Durazno'],['menta','Menta'],['amarillo','Amarillo'],['lila','Lila'],['crema','Crema']]},
     foto: {def:'editorial', items:[['editorial','Editorial de belleza'],['natural','Natural'],['minimal','Minimalista']]},
     edad: {def:'variada', items:[['variada','Variada'],['18-25','18 a 25'],['26-35','26 a 35'],['36-45','36 a 45']]},
@@ -586,6 +588,8 @@ Reglas:
       playa: `Uruguayan beach at golden hour, soft ${col} tones`,
       amigas: `cozy cafe terrace with friends, ${col} color accents`
     };
+    const tipo = (!o.tipofoto || o.tipofoto === 'variado') ? 'modelo' : o.tipofoto;
+    if (tipo !== 'modelo') return promptTipo(a, tipo, {col, rulo, escena: escenas[o.escena] || escenas.color, foto: o.foto});
     const ropa = pick(['a colorful casual cotton t-shirt','a light linen button-up blouse','a cozy pastel knit sweater','a denim jacket over a white tee','a flowy summer blouse with sleeves'], s >> 9);
     const persona = o.personas === 'dos' ? `two fictional smiling women friends in casual everyday clothes, one ${edad} with ${rulo} and ${piel}, both with defined curly hair` : `a fictional ${edad} woman with ${rulo} and ${piel}, wearing ${ropa}`;
     const pote = (o.pote === 'si' && !prodOf(a)) ? ', happily showing a small plain white jar of hair cream to the camera at chest height' : '';
@@ -594,10 +598,29 @@ Reglas:
     const comp = libre + ((a.layout === 'impacto' || a.layout === 'pop') ? 'subject placed in the lower two thirds, calm empty background space at the top for a headline' : 'subject in the upper two thirds, calm empty space in the lower third for text');
     return `${estilo} of ${persona}${pote}, ${ideaSegura(a.idea, a.seed)}, ${escenas[o.escena] || escenas.color}, ${comp}, warm genuine smile, friendly and confident, modest and fully clothed, focus on her healthy defined curly hair, real photograph of a real-looking person, natural skin texture with pores, natural makeup, shot on a full-frame DSLR with an 85mm lens, shallow depth of field, candid commercial photography, not an illustration, not anime, not a 3D render, not CGI, bright high-key lighting, airy pastel colors, sharp focus, no text, no letters, no logos, no watermark`;
   }
+  const TIPOS_CON_PRODUCTO = ['modelo','producto','flatlay','manos'];
+  function promptTipo(a, tipo, c){
+    const real = 'real photograph, photorealistic, natural textures, shot on a full-frame DSLR, soft natural light, bright high-key lighting, airy pastel colors, sharp focus, not an illustration, not a 3D render, no text, no letters, no logos, no watermark';
+    const conProd = integra(a) && TIPOS_CON_PRODUCTO.includes(tipo), hayProd = !!prodOf(a);
+    const prod = conProd ? 'the exact product from the reference image (same bottle shape, colors and label, do not redraw the label)' : 'a plain unbranded cosmetic jar of hair cream';
+    const espacio = (a.layout === 'impacto' || a.layout === 'pop') ? 'leave calm empty space at the top for a headline' : 'leave calm empty space in the lower third for text';
+    const sinProd = hayProd && !conProd ? ', with clear empty space in the lower right corner for a product to be added later, no bottles or jars in the scene' : '';
+    const props = pick(['fresh peach slices and hibiscus flowers','citrus slices and green leaves','pastel flowers and a silk ribbon','tropical monstera leaves and orchids','smooth pebbles and dried pampas grass'], a.seed);
+    switch (tipo){
+      case 'producto': return `bright hair care product still life advertising photograph of ${hayProd && !conProd ? 'an elegant styled surface' : prod} on a pedestal, surrounded by ${props}, seamless ${c.col} backdrop, gentle shadows${sinProd}, ${espacio}, ${real}`;
+      case 'flatlay': return `top-down flat lay photograph on a ${c.col} surface with ${hayProd && !conProd ? 'a composition of' : prod + ' in the center and'} ${props}, a wide-tooth comb and a silk scrunchie, neatly arranged${sinProd}, ${espacio}, ${real}`;
+      case 'manos': return `close-up photograph of hands applying ${conProd ? 'hair cream taken from ' + prod : 'a creamy hair styling cream'} to beautiful defined ${c.rulo}, no face visible, ${c.escena}${sinProd}, ${espacio}, ${real}`;
+      case 'textura': return `macro close-up photograph of a glossy swirl of white creamy hair styling cream texture on fingertips, silky and rich, ${c.col} background${sinProd}, ${espacio}, ${real}`;
+      case 'rulos': return `close-up photograph of beautiful glossy defined ${c.rulo} seen from behind and slightly from the side, no face visible, light catching the curls, ${c.col} background${sinProd}, ${espacio}, ${real}`;
+      case 'antesdespues': return `split-screen before and after comparison photograph of the same curly hair seen from behind, no face visible: left half dry frizzy undefined puffy curls, right half the same hair with defined glossy hydrated ${c.rulo}, same person, same lighting, same ${c.col} background, a clean vertical dividing line exactly in the middle, ${real}`;
+    }
+    return '';
+  }
   const IDEAS_OK = ['smiling at the camera','touching her curls with both hands','laughing joyfully','looking over her shoulder with a smile','playing with a curl and smiling','eyes closed, enjoying the moment, smiling','confident pose with a big smile','showing her curls proudly'];
   function ideaSegura(t, s){ return /(sexy|sensual|seduct|lingerie|bra|bikini|nude|naked|bed|undress|strap|lip bit|biting|desnud|provoc)/i.test(t || '') || !t ? pick(IDEAS_OK, s) : t; }
-  function integra(a){ const o = a.op || opt; return (o.prodModo || 'mano') !== 'pegar' && !!prodOf(a) && !!key(); }
+  function integra(a){ const o = a.op || opt, t = (!o.tipofoto || o.tipofoto === 'variado') ? 'modelo' : o.tipofoto; return (o.prodModo || 'mano') !== 'pegar' && !!prodOf(a) && !!key() && TIPOS_CON_PRODUCTO.includes(t); }
   function fotoPromptInt(a){
+    const tt = (a.op || opt).tipofoto; if (tt && tt !== 'variado' && tt !== 'modelo') return 'Create a brand-new realistic advertising photograph that features the product shown in the reference image. Keep the product exactly identical: same bottle shape, colors, cap and label design, do not change or redraw the label. ' + fotoPrompt(a);
     const base = fotoPrompt(Object.assign({}, a, {op: Object.assign({}, a.op || opt, {pote: 'no'})}));
     const modo = (a.op || opt).prodModo === 'apoyado'
       ? 'this exact product from the reference image stands upright on a small table or shelf right next to her, label facing the camera, clearly visible and in focus'
@@ -696,8 +719,18 @@ Reglas:
 
   // ---------- Crear anuncios ----------
   const uid = () => Math.random().toString(36).slice(2, 9);
+  const CICLO_TIPOS = ['modelo','producto','antesdespues','modelo','rulos','flatlay','modelo','textura','manos','modelo'];
+  const CICLO_ESC = ['color','flores','bano','ciudad','playa','amigas'];
+  function opVariado(i, tanda){
+    const o = Object.assign({}, opt), k = i + tanda * 3;
+    if (o.tipofoto === 'variado') o.tipofoto = CICLO_TIPOS[k % CICLO_TIPOS.length];
+    if (o.escena === 'variado') o.escena = CICLO_ESC[(i * 2 + tanda) % CICLO_ESC.length];
+    if (o.fondo === 'variado') o.fondo = Object.keys(FONDOS)[(i * 3 + tanda) % Object.keys(FONDOS).length];
+    if (o.tipofoto === 'modelo' && opt.personas === 'una' && k % 4 === 3) o.personas = 'dos';
+    return o;
+  }
   function baseAd(tanda, i){
-    return {uid: uid(), tanda, seed: Math.floor(Math.random() * 1e9), op: Object.assign({}, opt), acc: opt.acento, font: opt.tipo, showPrice: true, showLogo: true, showProd: true, prodPos: 'der', prodSize: 'M', fav: false};
+    return {uid: uid(), tanda, seed: Math.floor(Math.random() * 1e9), op: opVariado(i, tanda), acc: opt.acento, font: opt.tipo, showPrice: true, showLogo: true, showProd: true, prodPos: 'der', prodSize: 'M', fav: false};
   }
   function normalize(o, tanda, i){
     o = o || {}; const t = v => String(v == null ? '' : v).trim();
@@ -820,6 +853,13 @@ Reglas:
     if (w){ ctx.save(); ctx.globalCompositeOperation = 'soft-light'; ctx.fillStyle = w > 0 ? `rgba(255,140,40,${Math.abs(w) / 100 * .7})` : `rgba(40,120,255,${Math.abs(w) / 100 * .7})`; ctx.fillRect(dx, dy, dw, dh); ctx.restore(); }
     if (fx.vineta){ const g = ctx.createRadialGradient(dx + dw / 2, dy + dh / 2, Math.min(dw, dh) * .35, dx + dw / 2, dy + dh / 2, Math.max(dw, dh) * .75); g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, `rgba(0,0,0,${fx.vineta / 100 * .6})`); ctx.fillStyle = g; ctx.fillRect(dx, dy, dw, dh); }
   }
+  function antesDespues(ctx, a, x, y, w, h){
+    const t = (a.op || {}).tipofoto; if (t !== 'antesdespues' || !a.imgEl) return;
+    const lab = (txt, cx, bg, fg) => { ctx.font = `800 34px ${SANS}`; const tw = ctx.measureText(txt).width + 44; ctx.fillStyle = bg; rr(ctx, cx - tw / 2, y + h * .58, tw, 62, 31); ctx.fill(); ctx.fillStyle = fg; ctx.textAlign = 'center'; ctx.fillText(txt, cx, y + h * .58 + 43); ctx.textAlign = 'left'; };
+    ctx.save(); ctx.strokeStyle = 'rgba(255,255,255,.95)'; ctx.lineWidth = 6; ctx.beginPath(); ctx.moveTo(x + w / 2, y + 20); ctx.lineTo(x + w / 2, y + h - 20); ctx.stroke(); ctx.restore();
+    lab('ANTES', x + w * .25, 'rgba(27,20,24,.85)', '#fff'); lab('DESPUÉS', x + w * .75, a.acc || '#D9434F', onAcc(a.acc || '#D9434F'));
+    ctx.font = `500 20px ${SANS}`; ctx.fillStyle = 'rgba(255,255,255,.85)'; ctx.textAlign = 'center'; ctx.fillText('Imagen ilustrativa generada con IA', x + w / 2, y + h - 236); ctx.textAlign = 'left';
+  }
   function drawProd(ctx, a, W, H, yBottom, base){
     const P = prodOf(a); if (!P || a.showProd === false || a.integrado) return;
     const mult = {S:.7, M:1, L:1.3}[a.prodSize || 'M'] || 1;
@@ -840,7 +880,7 @@ Reglas:
     ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
     const pTop = Math.round(H * (H > 1500 ? .42 : H > 1200 ? .40 : .36));
     if (a.imgEl){
-      drawPhoto(ctx, a.imgEl, 0, pTop - 140, W, H - pTop + 140, a, .35);
+      drawPhoto(ctx, a.imgEl, 0, pTop - 140, W, H - pTop + 140, a, .35); antesDespues(ctx, a, 0, pTop - 140, W, H - pTop + 140);
       const g = ctx.createLinearGradient(0, pTop - 140, 0, pTop + 120); g.addColorStop(0, bg); g.addColorStop(1, bg + '00'); ctx.fillStyle = g; ctx.fillRect(0, pTop - 140, W, 262);
     } else {
       ctx.fillStyle = 'rgba(27,20,24,.45)'; ctx.font = `600 34px ${SANS}`; ctx.textAlign = 'center';
@@ -895,7 +935,7 @@ Reglas:
     if ((a.layout || '') === 'pop'){ drawPop(ctx, a, W, H, d, acc); ctx.setTransform(1, 0, 0, 1, 0, 0); return; }
     // Foto
     if (a.imgEl){
-      drawPhoto(ctx, a.imgEl, 0, 0, W, H, a, .5);
+      drawPhoto(ctx, a.imgEl, 0, 0, W, H, a, .5); antesDespues(ctx, a, 0, 0, W, H);
     } else {
       const g = ctx.createLinearGradient(0, 0, W, H); g.addColorStop(0, a.bg || '#F7B98B'); g.addColorStop(1, '#FBEDE4'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
       ctx.fillStyle = 'rgba(42,22,32,.55)'; ctx.font = `600 34px ${SANS}`; ctx.textAlign = 'center';
@@ -1004,6 +1044,13 @@ Reglas:
       <p class="hip">${esc(a.hip)}</p>
       ${a.imgState === 'error' ? `<p class="status err" style="margin:0 0 12px">No se pudo crear la foto: ${esc(a.imgErr || 'sin respuesta')}</p>` : ''}
       <div class="row"><button class="btn accent sm" type="button" data-act="foto">${ICON.img}Otra foto</button><button class="btn sm" type="button" data-act="texto">${ICON.txt}Otro texto</button><label class="btn sm upl">${ICON.up}Subir foto<input type="file" accept="image/*" data-act="subir"></label></div>
+      <div class="group"><span class="glab">Foto de este anuncio</span>
+        <p class="hint" style="margin:-4px 0 0">Elegí cómo querés la foto de ESTE anuncio y tocá "Crear foto con estas opciones".</p>
+        ${[['tipofoto','Tipo de foto'],['escena','Escena'],['fondo','Color de fondo'],['foto','Estilo de foto'],['edad','Edad'],['rulo','Tipo de rulo'],['piel','Tono de piel'],['personas','Personas'],['pote','Pote genérico']].map(([k, n]) => `<div class="f" style="gap:6px"><span>${n}</span><div class="opt">${OPTS[k].items.filter(([v]) => !(['tipofoto','escena','fondo'].includes(k) && v.startsWith('variad'))).map(([v, t]) => `<button type="button" data-po="${k}" data-v="${v}" aria-pressed="${(a.op || opt)[k] === v}">${k === 'fondo' && FONDOS[v] ? `<b style="background:${FONDOS[v][0]}"></b>` : ''}${t}</button>`).join('')}</div></div>`).join('')}
+        <button class="btn accent sm" type="button" data-act="foto2">${ICON.img}Crear foto con estas opciones</button>
+        <label class="f">Qué hace la modelo <span class="hint">en inglés; cambialo y tocá "Otra foto"</span><textarea data-e="idea" rows="2">${esc(a.idea)}</textarea></label>
+        <button class="btn sm" type="button" data-act="reset">Volver al texto original</button>
+      </div>
       <div class="group"><span class="glab">Estilo del texto</span>
         <div class="styles">${[['pop','Marcador','s-po'],['editorial','Editorial','s-ed'],['impacto','Impacto','s-im'],['tarjeta','Tarjeta','s-ta']].map(([v, n, cl]) => `<button type="button" class="${cl}" data-lay="${v}" aria-pressed="${a.layout === v}"><i></i>${n}</button>`).join('')}</div>
         <div class="seg" role="group" aria-label="Tipografía" style="align-self:flex-start">${[['moderna','Moderna'],['elegante','Elegante']].map(([v, n]) => `<button type="button" data-font="${v}" aria-pressed="${a.font === v}">${n}</button>`).join('')}</div>
@@ -1036,13 +1083,6 @@ Reglas:
       <div class="group"><span class="glab">Textos para Meta</span>
         ${field('primary', 'Texto principal', true)}${field('title', 'Título')}
         <label class="f">Botón de Meta<select data-e="button">${BOTONES.map(b => `<option ${b === a.button ? 'selected' : ''}>${b}</option>`).join('')}</select></label>
-      </div>
-      <div class="group"><span class="glab">Foto de este anuncio</span>
-        <p class="hint" style="margin:-4px 0 0">Elegí cómo querés la foto de ESTE anuncio y tocá "Crear foto con estas opciones".</p>
-        ${[['escena','Escena'],['fondo','Color de fondo'],['foto','Estilo de foto'],['edad','Edad'],['rulo','Tipo de rulo'],['piel','Tono de piel'],['personas','Personas'],['pote','Pote genérico']].map(([k, n]) => `<div class="f" style="gap:6px"><span>${n}</span><div class="opt">${OPTS[k].items.map(([v, t]) => `<button type="button" data-po="${k}" data-v="${v}" aria-pressed="${(a.op || opt)[k] === v}">${k === 'fondo' && FONDOS[v] ? `<b style="background:${FONDOS[v][0]}"></b>` : ''}${t}</button>`).join('')}</div></div>`).join('')}
-        <button class="btn accent sm" type="button" data-act="foto2">${ICON.img}Crear foto con estas opciones</button>
-        <label class="f">Qué hace la modelo <span class="hint">en inglés; cambialo y tocá "Otra foto"</span><textarea data-e="idea" rows="2">${esc(a.idea)}</textarea></label>
-        <button class="btn sm" type="button" data-act="reset">Volver al texto original</button>
       </div>
       <div class="group"><span class="glab">Chequeo para Meta</span><ul class="chk">${chequeo(a).map(([ok, t]) => `<li class="${ok ? 'ok' : 'wa'}"><b aria-hidden="true">${ok ? '✓' : '!'}</b><span>${esc(t)}</span></li>`).join('')}</ul>
         <button class="btn sm" type="button" data-act="fmt3">${ICON.dl}Descargar en los 3 formatos</button></div>
